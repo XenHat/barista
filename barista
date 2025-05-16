@@ -1,0 +1,135 @@
+#!/bin/bash
+## Service script to keep the device awake when there are active down/uploads
+## Workaround for https://github.com/ValveSoftware/SteamOS/issues/865
+#
+# Copyright (C) 2025 XenHat
+# This file is part of barista <https://github.com/XenHat/barista>.
+#
+# This software is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <http://www.gnu.org/licenses/>.
+
+if [[ "$1" == '--setup' ]]; then
+  echo "WIP"
+  if [[ ! -d "$HOME/.config/systemd/user" ]]; then
+    mkdir -p "$HOME/.config/systemd/user"
+  fi
+  cat <<-'SERVICE' >"$HOME/.config/systemd/user/barista@.service"
+	[Unit]
+	Description=service to prevent sleep during up/downloads via %i
+	After=network-online.target
+
+	[Service]
+	ExecStart=%h/barista %I --service
+	Type=simple
+  RemainAfterExit=yes
+
+	[Install]
+	WantedBy=default.target
+	SERVICE
+  cat <<-'TIMER' >"$HOME/.config/systemd/user/barista@.timer"
+	
+	[Unit]
+	Description=timer to prevent sleep during up/downloads via %i
+	Requires=barista@.service
+	After=network-online.target
+
+	[Timer]
+	Unit=barista@.service
+	OnBootSec=30sec
+	OnUnitActiveSec=30sec
+
+	[Install]
+	WantedBy=timers.target
+	TIMER
+  # shellcheck disable=SC2206
+  net_devices=$(tail -n+3 /proc/net/dev | grep -v 'lo:' | cut -d ':' -f 1)
+  echo "stopping existing barista timer"
+  for d in $net_devices; do
+    systemctl --user stop barista@"$d".timer
+  done
+  echo "reloading units"
+  systemctl --user daemon-reload
+  echo "starting services"
+  for d in $net_devices; do
+    systemctl --user enable --now barista@"$d".timer
+  done
+  exit 0
+fi
+
+# cat <<<'BARISTA' >/dev/shm/barista
+LINE=""
+SLP=1 # display / sleep interval
+IS_GOOD=0
+DEVICE=$1
+# Validate device by scanning /proc/net/dev
+while IFS= read -r line; do
+  [[ "$line" == *:* ]] || continue
+  iface=${line%%:*}
+  iface=${iface// /}
+  if [[ "$DEVICE" == "$iface" ]]; then
+    IS_GOOD=1
+    break
+  fi
+done </proc/net/dev
+if ((IS_GOOD == 0)); then
+  echo "Device not found. Should be one of these:"
+  while IFS= read -r line; do
+    [[ "$line" == *:* ]] || continue
+    iface=${line%%:*}
+    iface=${iface// /}
+    echo "$iface"
+  done </proc/net/dev
+  exit 1
+fi
+unset IS_GOOD
+RECEIVED=0
+TRANSMITTED=0
+get_stats() {
+  dev_line=$(grep "$DEVICE" /proc/net/dev)
+  LINE=${dev_line/#*:/}
+  # calling read is slower than pure bash, just ignore the warning...
+  # shellcheck disable=SC2206
+  arr=($LINE)
+  RECEIVED=${arr[0]}
+  TRANSMITTED=${arr[8]}
+}
+get_net_speed() {
+  get_stats
+  TOTAL=$((RECEIVED + TRANSMITTED))
+  sleep $SLP # Sleep to get statistics between two points in time
+  get_stats
+  SPEED=$(((RECEIVED + TRANSMITTED - TOTAL) / SLP))
+  SPEED_KB=$((SPEED / 1024))
+  printf "%i\n" $SPEED_KB
+}
+# BARISTA
+
+trap exit\ 0 INT
+# TODO: write simple usage directives with --help/-h
+inhibit_floor=${3:-500}
+if [[ -n "$2" ]]; then
+  if [[ "$2" == '--wait' ]]; then
+    while [[ $(get_net_speed) -ge $inhibit_floor ]]; do
+      sleep 5
+    done
+  elif [[ "$2" == --'service' ]]; then
+    while sleep 1; do
+      if [[ $(get_net_speed) -ge $inhibit_floor ]]; then
+        systemd-inhibit --who="$(basename "$0")" --what='sleep' --why="Preventing sleep during down/uploads ($DEVICE)" "$0" "$DEVICE" --wait
+      fi
+    done
+  fi
+else
+  get_net_speed
+fi
+# vim:set noexpandtab
