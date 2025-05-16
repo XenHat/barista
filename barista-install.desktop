@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Install Barista
+Comment=Do the thing
+Exec=/bin/bash -c 'curl https://raw.githubusercontent.com/XenHat/barista/refs/heads/main/barista | tee "$HOME/barista" | bash -s -- --setup'
+Icon=Terminal
+Path=~
+Terminal=false
+StartupNotify=true
