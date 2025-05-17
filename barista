@@ -126,6 +126,7 @@ if [[ -n "$2" ]]; then
     while sleep 1; do
       if [[ $(get_net_speed) -ge $inhibit_floor ]]; then
         systemd-inhibit --who="$(basename "$0")" --what='sleep' --why="Preventing sleep during down/uploads ($DEVICE)" "$0" "$DEVICE" --wait
+        sleep 60 # wait for a minute for post-download tasks to finish
       fi
     done
   fi
