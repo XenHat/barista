@@ -66,6 +66,23 @@ if [[ "$1" == '--setup' ]]; then
   exit 0
 fi
 
+if [[ "$1" == '--uninstall' ]]; then
+  echo "Uninstalling barista systemd user units..."
+  # shellcheck disable=SC2206
+  net_devices=$(tail -n+3 /proc/net/dev | grep -v 'lo:' | cut -d ':' -f 1)
+  for d in $net_devices; do
+    systemctl --user stop barista@"$d".timer
+    systemctl --user disable barista@"$d".timer
+    systemctl --user stop barista@"$d".service
+    systemctl --user disable barista@"$d".service
+  done
+  rm -f "$HOME/.config/systemd/user/barista@.service"
+  rm -f "$HOME/.config/systemd/user/barista@.timer"
+  systemctl --user daemon-reload
+  echo "barista systemd user units removed."
+  exit 0
+fi
+
 # cat <<<'BARISTA' >/dev/shm/barista
 LINE=""
 SLP=1 # display / sleep interval
