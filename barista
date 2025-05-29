@@ -83,6 +83,35 @@ if [[ "$1" == '--uninstall' ]]; then
   exit 0
 fi
 
+if [[ "$1" == '--help' || "$1" == '-h' ]]; then
+  cat <<EOF
+barista - Prevent system sleep during active network transfers
+
+Usage:
+  $0 <device> [--wait|--service] [inhibit_floor]
+  $0 --setup
+  $0 --uninstall
+  $0 --help | -h
+
+Options:
+  <device>         Network device to monitor (e.g. eth0, wlan0)
+  --wait           Wait until network speed drops below inhibit_floor (KB/s)
+  --service        Run as a systemd-inhibit service (for use with systemd units)
+  inhibit_floor    Minimum KB/s to trigger inhibition (default: 500)
+  --setup          Install and enable systemd user units for all devices
+  --uninstall      Remove systemd user units
+  --help, -h       Show this help message
+
+Examples:
+  $0 eth0
+  $0 eth0 --wait 200
+  $0 eth0 --service 1000
+  $0 --setup
+  $0 --uninstall
+EOF
+  exit 0
+fi
+
 # cat <<<'BARISTA' >/dev/shm/barista
 LINE=""
 SLP=1 # display / sleep interval
